@@ -1,12 +1,32 @@
 # Gems
 # ==================================================
 
+# Database
+# ==================================================
+#if yes?('Use sqlite3?')
+#  use_database = true
+#end
+
+#if yes?('Use mysql?')
+#  comment_lines 'Gemfile', "gem 'sqlite3'"
+#  gem 'mysql2'
+#end
+#if yes?('Use postgresql?')
+#  comment_lines 'Gemfile', "gem 'sqlite3'"
+#  gem 'pg'
+#end
+
+repo_url = 'https://raw.github.com/patorash/rails_startup_template/master'
+
 # Segment.io as an analytics solution (https://github.com/segmentio/analytics-ruby)
 gem "analytics-ruby"
 # For encrypted password
-gem "bcrypt-ruby"
+uncomment_lines 'Gemfile', "gem 'bcrypt-ruby'"
 # Useful SASS mixins (http://bourbon.io/)
 gem "bourbon"
+
+# i18n-js
+gem 'i18n-js'
 
 # For authorization (https://github.com/ryanb/cancan)
 gem "cancan"
@@ -19,10 +39,13 @@ gem 'kaminari'
 gem 'ransack'
 gem 'ancestry'
 gem 'active_decorator'
-gem 'whenever', require: false
+
+if yes?("Would you like to install whenever?")
+  gem 'whenever', require: false
+end
 
 if yes?("Use Bootstrap?")
-  gem 'therubyracer', platforms: :ruby
+  uncomment_lines 'Gemfile', "gem 'therubyracer'"
   gem 'less-rails'
   gem 'twitter-bootstrap-rails'
   use_bootstrap = true
@@ -40,6 +63,7 @@ gem "simple_form", github: 'plataformatec/simple_form', branch: 'master'
 gem "uuidtools"
 
 gem_group :development, :test do
+  # Rspec for tests (https://github.com/rspec/rspec-rails)
   gem "rspec-rails"
   # Capybara for integration testing (https://github.com/jnicklas/capybara)
   gem "capybara"
@@ -48,8 +72,6 @@ gem_group :development, :test do
 end
 
 gem_group :development do
-  # Rspec for tests (https://github.com/rspec/rspec-rails)
-  gem "rspec-rails"
   # Guard for automatically launching your specs when files are modified. (https://github.com/guard/guard-rspec)
   gem "guard-rspec"
   gem 'better_errors'
@@ -58,6 +80,7 @@ gem_group :development do
   gem 'capistrano_colors'
   gem 'capistrano-ext'
   gem 'capistrano-rbenv'
+  gem 'pry-rails'
 end
 
 gem_group :test do
@@ -82,49 +105,54 @@ end
 # ==================================================
 # Use Procfile for foreman
 if yes?('Use unicorn?')
-  gem 'unicorn'
-  run "echo 'web: bundle exec unicorn -p $PORT -c ./config/unicorn.conf.rb' >> Procfile"
+  uncomment_lines 'Gemfile', "gem 'unicorn'"
+  use_unicorn = true
+end
+run "bundle install"
+
+if use_unicorn
+  get_and_gsub "#{repo_url}/config/unicorn.rb", 'config/unicorn.rb'
+  run "echo 'web: bundle exec unicorn -p $PORT -c ./config/unicorn.rb' >> Procfile"
 else
   run "echo 'web: bundle exec rails server -p $PORT' >> Procfile"
 end
-
-run "echo PORT=3000 >> .foreman"
-run "echo '.foreman' >> .gitignore"
+run "echo 'PORT: 3000' >> .foreman"
 # We need this with foreman to see log output immediately
-run "echo 'STDOUT.sync = true' >> config/environments/development.rb"
+environment 'STDOUT.sync = true', env: 'development'
 
-run "bundle install"
 
 # Initialize Devise
 # ==================================================
 if use_devise
-  run "rails g devise:install"
-  run "rails g devise user"
-  run "rails g devise:views"
-  run "echo 'config.action_mailer.default_url_options = { :host => 'localhost:3000' }' >> config/environments/development.rb"
+  generate 'devise:install'
+  generate 'devise:views', 'users'
+  environment 'config.action_mailer.default_url_options = {host: "localhost:3000"}', env: 'development'
+  environment 'config.action_mailer.default_url_options = {host: "localhost:3000"}', env: 'test'
+  route "devise_for :user"
 end
 
 # Initialize CanCan
 # ==================================================
-run "rails g cancan:ability"
+generate 'cancan:ability'
 
 # Initialize Bootstrap
 # ==================================================
 if use_bootstrap
-  run "rails g bootstrap:install less"
+  generate 'bootstrap:install', 'less'
   if yes?("Responsive layout?")
-    run "rails g bootstrap:layout application fluid"
+    generate 'bootstrap:layout', 'application fluid'
   else
-    run "rails g bootstrap:layout application fixed"
+    generate 'bootstrap:layout', 'application fixed'
   end
-  run "rails g simple_form:install --bootstrap"
+  generate 'simple_form:install', '--bootstrap'
 end
 
 
 
 # Initialize rspec
 # ==================================================
-run "rails g rspec:install"
+generate 'rspec:install'
+remove_dir 'test'
 
 # Initialize guard
 # ==================================================
@@ -144,22 +172,6 @@ run "echo >> app/assets/stylesheets/application.css.scss"
 run "echo '@import \"bourbon\";' >>  app/assets/stylesheets/application.css.scss"
 
 
-
-
-# Bootstrap: install from https://github.com/twbs/bootstrap
-# Note: This is 3.0.0
-# ==================================================
-#if yes?("Download bootstrap?")
-#  run "wget https://github.com/twbs/bootstrap/archive/v3.0.0.zip -O bootstrap.zip -O bootstrap.zip"
-#  run "unzip bootstrap.zip -d bootstrap && rm bootstrap.zip"
-#  run "cp bootstrap/bootstrap-3.0.0/dist/css/bootstrap.css vendor/assets/stylesheets/"
-#  run "cp bootstrap/bootstrap-3.0.0/dist/js/bootstrap.js vendor/assets/javascripts/"
-#  run "rm -rf bootstrap"
-#  run "echo '@import \"bootstrap\";' >>  app/assets/stylesheets/application.css.scss"
-#  run "rails g simple_form:install --bootstrap"
-#end
-
-
 # Font-awesome: Install from http://fortawesome.github.io/Font-Awesome/
 # ==================================================
 if yes?("Download font-awesome?")
@@ -174,7 +186,9 @@ end
 
 # Ignore rails doc files, Vim/Emacs swap files, .DS_Store, and more
 # ===================================================
-run "cat << EOF >> .gitignore
+remove_file '.gitignore'
+create_file '.gitignore' do
+  body = <<EOS
 /.bundle
 /db/*.sqlite3
 /db/*.sqlite3-journal
@@ -188,10 +202,21 @@ doc/
 .idea
 .secret
 .DS_Store
-EOF"
+.foreman
+EOS
+end
 
+generate 'controller', 'home index'
+route "root to: 'home#index'"
 
-route "root to: 'welcome#index'"
+#capistrano
+capify!
+uncomment_lines 'Capfile', "load 'deploy/assets'"
+get_and_gsub "#{repo_url}/config/deploy.rb", 'config/deploy.rb'
+
+# i18n-js
+rake('i18n:js:setup')
+
 
 # Git: Initialize
 # ==================================================
